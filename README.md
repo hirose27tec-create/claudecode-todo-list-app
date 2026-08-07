@@ -34,3 +34,5 @@ npm run start
 ## デプロイ
 
 [Vercel](https://vercel.com) にデプロイして公開しています。
+
+**公開URL: https://claudecode-todo-list-app.vercel.app**
