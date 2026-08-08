@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { GOAL_COLORS, priorityWeight } from "@/lib/constants";
+import { useLocalStorage } from "@/lib/useLocalStorage";
+import Filters from "./components/Filters";
+import GoalManager from "./components/GoalManager";
+import TaskForm from "./components/TaskForm";
+import TaskList from "./components/TaskList";
 import styles from "./page.module.css";
 
-const STORAGE_KEY = "todo-list-app:tasks";
-
-const FILTERS = {
-  all: { label: "すべて" },
-  active: { label: "未完了" },
-  completed: { label: "完了" },
-};
+const TASKS_KEY = "todo-list-app:tasks";
+const GOALS_KEY = "todo-list-app:goals";
 
 function createId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -19,41 +20,24 @@ function createId() {
 }
 
 export default function Home() {
-  const [tasks, setTasks] = useState([]);
-  const [text, setText] = useState("");
+  const [tasks, setTasks] = useLocalStorage(TASKS_KEY, []);
+  const [goals, setGoals] = useLocalStorage(GOALS_KEY, []);
   const [filter, setFilter] = useState("all");
-  const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
-    // サーバー側では window が存在しないため、マウント後に
-    // localStorage から読み込んでハイドレーション不整合を避ける。
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setTasks(JSON.parse(saved));
-      }
-    } catch (error) {
-      console.error("タスクの読み込みに失敗しました", error);
-    } finally {
-      setLoaded(true);
-    }
-  }, []);
+  const goalsById = useMemo(() => new Map(goals.map((g) => [g.id, g])), [goals]);
 
-  useEffect(() => {
-    if (!loaded) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-  }, [tasks, loaded]);
-
-  const handleAdd = (event) => {
-    event.preventDefault();
-    const trimmed = text.trim();
-    if (!trimmed) return;
+  const addTask = ({ text, priority, goalId }) => {
     setTasks((prev) => [
-      { id: createId(), text: trimmed, completed: false, createdAt: Date.now() },
+      {
+        id: createId(),
+        text,
+        completed: false,
+        createdAt: Date.now(),
+        priority,
+        goalId,
+      },
       ...prev,
     ]);
-    setText("");
   };
 
   const toggleTask = (id) => {
@@ -72,10 +56,31 @@ export default function Home() {
     setTasks((prev) => prev.filter((task) => !task.completed));
   };
 
+  const addGoal = (name) => {
+    setGoals((prev) => [
+      ...prev,
+      { id: createId(), name, color: GOAL_COLORS[prev.length % GOAL_COLORS.length] },
+    ]);
+  };
+
+  const deleteGoal = (id) => {
+    setGoals((prev) => prev.filter((goal) => goal.id !== id));
+    setTasks((prev) =>
+      prev.map((task) => (task.goalId === id ? { ...task, goalId: null } : task))
+    );
+  };
+
   const filteredTasks = useMemo(() => {
-    if (filter === "active") return tasks.filter((t) => !t.completed);
-    if (filter === "completed") return tasks.filter((t) => t.completed);
-    return tasks;
+    const base =
+      filter === "active"
+        ? tasks.filter((t) => !t.completed)
+        : filter === "completed"
+        ? tasks.filter((t) => t.completed)
+        : tasks;
+
+    return [...base].sort(
+      (a, b) => priorityWeight(a.priority) - priorityWeight(b.priority)
+    );
   }, [tasks, filter]);
 
   const remainingCount = tasks.filter((t) => !t.completed).length;
@@ -89,73 +94,20 @@ export default function Home() {
           <p className={styles.subtitle}>今日やることを、ひとつずつ整理しましょう</p>
         </header>
 
-        <form className={styles.addForm} onSubmit={handleAdd}>
-          <input
-            className={styles.input}
-            type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="新しいタスクを入力..."
-            aria-label="新しいタスク"
-            maxLength={200}
-          />
-          <button className={styles.addButton} type="submit">
-            追加
-          </button>
-        </form>
+        <GoalManager goals={goals} onAdd={addGoal} onDelete={deleteGoal} />
 
-        <nav className={styles.filters} aria-label="タスクの絞り込み">
-          {Object.entries(FILTERS).map(([key, { label }]) => (
-            <button
-              key={key}
-              type="button"
-              className={`${styles.filterButton} ${
-                filter === key ? styles.filterButtonActive : ""
-              }`}
-              onClick={() => setFilter(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        <TaskForm goals={goals} onAdd={addTask} />
 
-        <ul className={styles.list}>
-          {filteredTasks.length === 0 && (
-            <li className={styles.emptyState}>
-              {tasks.length === 0
-                ? "まだタスクがありません。上の入力欄から追加してみましょう！"
-                : filter === "completed"
-                ? "完了したタスクはまだありません。"
-                : "未完了のタスクはありません。よくできました！"}
-            </li>
-          )}
-          {filteredTasks.map((task) => (
-            <li key={task.id} className={styles.item}>
-              <input
-                type="checkbox"
-                className={styles.checkbox}
-                checked={task.completed}
-                onChange={() => toggleTask(task.id)}
-                aria-label={`${task.text} を完了にする`}
-              />
-              <span
-                className={`${styles.itemText} ${
-                  task.completed ? styles.itemTextDone : ""
-                }`}
-              >
-                {task.text}
-              </span>
-              <button
-                type="button"
-                className={styles.deleteButton}
-                onClick={() => deleteTask(task.id)}
-                aria-label={`${task.text} を削除する`}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
+        <Filters filter={filter} onChange={setFilter} />
+
+        <TaskList
+          tasks={filteredTasks}
+          allTasksCount={tasks.length}
+          filter={filter}
+          goalsById={goalsById}
+          onToggle={toggleTask}
+          onDelete={deleteTask}
+        />
 
         {tasks.length > 0 && (
           <footer className={styles.footer}>

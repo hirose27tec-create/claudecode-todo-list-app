@@ -1,0 +1,31 @@
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.filterButton {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.filterButton:hover {
+  background: var(--color-bg-start);
+}
+
+.filterButtonActive {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.filterButtonActive:hover {
+  background: var(--color-primary);
+}
